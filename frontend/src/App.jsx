@@ -4,7 +4,7 @@ import io from 'socket.io-client'
 import './App.css'
 
 // connect to server OUTSIDE of the component so it doesn't reconnect, everytime you type
-const socket = io('http://localhost:5000') // adjust URL as needed
+const socket = io('https://sids-worldchat.onrender.com') // adjust URL as needed
 
 function App() {
   const [username, setUsername] = useState("User_" + Math.floor(Math.random() * 1000));
@@ -43,7 +43,7 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/chat", {
+      const response = await fetch("https://sids-worldchat.onrender.com/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userInput }),
