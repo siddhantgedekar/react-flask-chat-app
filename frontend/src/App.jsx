@@ -89,7 +89,7 @@ function App() {
       <header>
         <nav>
           <h1>Developer Sid</h1>
-          <small>{userCount}</small>
+          <small>Online {userCount}</small>
           <small>
             <input className='username' value={username} onChange={(e) => setUsername(e.target.value)} />
           </small>
