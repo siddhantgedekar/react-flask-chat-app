@@ -7,6 +7,7 @@ import './App.css'
 const socket = io('https://sids-worldchat.onrender.com') // adjust URL as needed
 
 function App() {
+  const [userCount, setUserCount] = useState(0);
   const [username, setUsername] = useState("User_" + Math.floor(Math.random() * 1000));
   
   const [input, setInput] = useState("");
@@ -27,9 +28,13 @@ function App() {
     socket.on('receive_message_from_server', (data) => {
       setWorldMessages((prev) => [...prev, { message: data.message, sender: data.sender }]);
     });
+    socket.on('update_user_count', (data) => {
+      setUserCount(data.count)
+    });
     // cleanup on unmount
     return () => {
       socket.off('receive_message_from_server');
+      socket.off('update_user_count');
     };
   }, []);
 
@@ -84,6 +89,7 @@ function App() {
       <header>
         <nav>
           <h1>Developer Sid</h1>
+          <small>{userCount}</small>
           <small>
             <input className='username' value={username} onChange={(e) => setUsername(e.target.value)} />
           </small>

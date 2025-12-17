@@ -37,6 +37,9 @@ model_name = 'qwen2:0.5b'  # specify the model name
 # implementing memory of AI using Global variable for memory
 user_sessions = {}
 
+# number of users...
+connected_users = 0 # global counter
+
 # define a simple route
 @app.route('/')
 def home():
@@ -66,11 +69,17 @@ def chat():
 # global chat endpoint
 @socketio.on('connect')
 def handle_connect():
-    print('a user connected to global chat')
+    global connected_users
+    connected_users += 1
+    print('a user connected to global chat', connected_users)
+    emit('update_user_count', { 'count': connected_users}, broadcast=True )
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('a user disconnected from global chat')
+    global connected_users
+    connected_users -= 1
+    print('a user disconnected from global chat', connected_users)
+    emit('update_user_count', { 'count': connected_users}, broadcast=True )
 
 # listen to messages from clients/react
 @socketio.on('send_message_to_server')
