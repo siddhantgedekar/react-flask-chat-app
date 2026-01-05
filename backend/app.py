@@ -33,7 +33,7 @@ app.config['SESSION_TYPE'] = 'filesystem'
 
 # configure security key
 CORS(app, resources={r"/*": {"origins": "*"}}) # enable CORS for all origins
-socketio = SocketIO(app, cors_allowed_origins="*") # initialize socketio
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading') # initialize socketio
 # configure database with sqlalchemy
 db = SQLAlchemy(app) # initialize database
 
