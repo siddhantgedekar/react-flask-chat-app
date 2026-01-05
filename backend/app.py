@@ -33,7 +33,7 @@ app.config['SESSION_TYPE'] = 'filesystem'
 
 # configure security key
 CORS(app, resources={r"/*": {"origins": "*"}}) # enable CORS for all origins
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading') # initialize socketio
+socketio = SocketIO(app, cors_allowed_origins="*") # initialize socketio
 # configure database with sqlalchemy
 db = SQLAlchemy(app) # initialize database
 
@@ -166,10 +166,5 @@ with app.app_context(): # check if table exists, create if not.
 #     socketio.run(app, debug=True, port=5000)
 
 if __name__ == '__main__':
-    # Get the port from Render, or use 5000 for local dev
-    port = int(os.environ.get("PORT", 5000))
     load_dotenv()  # load environment variables from .env file
-    
-    # host='0.0.0.0' is REQUIRED to make the server accessible externally
-    # debug=False is better for production
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app)
