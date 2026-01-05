@@ -4,11 +4,13 @@ import io from 'socket.io-client'
 import './App.css'
 
 // connect to server OUTSIDE of the component so it doesn't reconnect, everytime you type
-const socket = io('https://sids-worldchat.onrender.com') // adjust URL as needed
+// const socket = io('https://sids-worldchat.onrender.com') // adjust URL as needed
+const socket = io('http://localhost:5000') // for local testing
 
 function App() {
   const [userCount, setUserCount] = useState(0);
-  const [username, setUsername] = useState("User_" + Math.floor(Math.random() * 1000));
+  // const [username, setUsername] = useState("User_" + Math.floor(Math.random() * 1000));
+  const [username, setUsername] = useState("");
   
   const [input, setInput] = useState("");
   const [worldInput, setWorldInput] = useState(""); // separate input for world
@@ -19,80 +21,140 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ai');
 
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   // Refs are ONLY for scrolling now, not for hiding/showing
   const aiChatEndRef = useRef(null);
   const worldChatEndRef = useRef(null);
 
-  // socket listener (the ear)
-  useEffect(() => {
+  useEffect(() => { // socket listener (the ear)
     socket.on('receive_message_from_server', (data) => {
-      setWorldMessages((prev) => [...prev, { message: data.message, sender: data.sender }]);
+      setWorldMessages((prev) => [...prev, data]);
     });
     socket.on('update_user_count', (data) => {
       setUserCount(data.count)
     });
-    // cleanup on unmount
-    return () => {
+    socket.on('load_history', (history) => {
+      setWorldMessages(history);
+    })
+
+    return () => { // cleanup on unmount
       socket.off('receive_message_from_server');
       socket.off('update_user_count');
+      socket.off('load_history');
     };
   }, []);
 
-  const sendMessage = async () => {
-    const userInput = input;
-    setInput("");
+  const sendMessage = async () => { // function to send message to AI server
+    const userInput = input; // store current input
+    
+    setInput(""); // clear input box
+
     if (!userInput.trim()) return;
+    
+    setMessages(prev => [...prev, { sender: "user", text: userInput }]); // Add USER message for AI chat
+    setIsLoading(true); // loading...
 
-    // Add USER message
-    setMessages(prev => [...prev, { sender: "user", text: userInput }]);
-    setIsLoading(true);
-
-    try {
+    try { // handle error and fetch to backend
       const response = await fetch("https://sids-worldchat.onrender.com/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userInput }),
       });
-
-      const data = await response.json();
-
-      // Add AI message
-      setMessages(prev => [...prev, { sender: "bot", text: data.reply }]);
-
+      const data = await response.json(); // wait for response
+      setMessages(prev => [...prev, { sender: "bot", text: data.reply }]); // add bot's response to messages state
     } catch (error) {
       console.error("Error:", error);
-      // FIX: Hardcoded error message instead of accessing undefined 'data'
       setMessages(prev => [...prev, { sender: "bot", text: "⚠️ Error: Could not connect to server." }]);
     }
-
     setIsLoading(false);
   };
 
-  const sendWorldMessage = () => {
-    if (!worldInput.trim()) return;
+  const sendWorldMessage = () => { // function to send message to world/handle_message socket event
+    if (!worldInput.trim()) return; // don't send empty messages
 
-    // send message to python/server via socket
-    socket.emit('send_message_to_server', { message: worldInput, username: username });
+    socket.emit('send_message_to_server', { message: worldInput, username: username }); // send message to python/server via socket
 
-    // clear the input box of world chat
-    setWorldInput("");
+    setWorldInput(""); // clear the input box of world chat
   }
 
-  // Scroll to bottom whenever messages change
-  useEffect(() => {
+  useEffect(() => { // Auto-Scroll to bottom whenever messages change
     if (activeTab === 'ai' && aiChatEndRef.current) aiChatEndRef.current.scrollIntoView({ behavior: "smooth" });
     if (activeTab === 'world' && worldChatEndRef.current) worldChatEndRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, worldMessages, activeTab]);
 
+  async function handleLogin(e) {
+    e.preventDefault(); // prevent page refresh
+    if(!username.trim()) return alert("Enter a name!"); // validation alert prompt for user
+
+    try { // call backend login endpoint
+      const response = await fetch("/login", { // vite.config automatically redirects/forwards it to endpoint/API
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username }),
+      })
+      const data = await response.json(); // wait and then parse the json response
+
+      if(response.ok) { // success!. Save username to state
+        setUsername(data.username); // set username
+        setIsLoggedIn(true); // mark logged in 'true'
+      } else {
+        alert(data.error); // show error message
+      }
+    } catch (error) { // handle error
+      console.log("Login error:", error);
+      alert("Server error. Is Python running?");
+    }
+  }
+
+  if (!isLoggedIn) { // if isLoggedIn == false, we won't show chat UI (ik it's basic, but works)
+    return (
+      <div style={{
+        height: '100vh', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        backgroundColor: '#282c34',
+        color: 'white'
+      }}>
+        <form onSubmit={handleLogin} style={{
+          padding: '2rem', 
+          border: '1px solid #444', 
+          borderRadius: '10px',
+          textAlign: 'center'
+        }}>
+          <h2>Welcome to Sid's Chat</h2>
+          <input 
+            type="text" 
+            placeholder="Enter Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            style={{ padding: '10px', fontSize: '1rem', marginBottom: '1rem' }}
+          />
+          <br />
+          <button type="submit" style={{
+            padding: '10px 20px', 
+            cursor: 'pointer', 
+            backgroundColor: '#61dafb', 
+            border: 'none', 
+            fontWeight: 'bold', 
+            color: 'black'
+          }}>
+            Join Chat
+          </button>
+          <br />
+          <small style={{fontFamily: 'monospace', fontWeight: 'bold', color: 'lightgrey'}}>Don't forget your username</small>
+        </form>
+      </div>
+    );
+  }
+
   return (
-    <div className="chat-container">
+    <div className="chat-container App">
       <header>
         <nav>
-          <h1>Developer Sid</h1>
-          <small>Online {userCount}</small>
-          <small>
-            <input className='username' value={username} onChange={(e) => setUsername(e.target.value)} />
-          </small>
+          <h1>RexOrion</h1>
+          <small>Online {userCount}</small> {/*show user count*/}
         </nav>
       </header>
 
@@ -133,14 +195,13 @@ function App() {
       <section style={{ display: activeTab === 'world' ? 'block' : 'none' }}>
         <div className="chat-history world">
           {worldMessages.map((msg, index) => {
-            // is the sender me of someone else?
-            const isMe = msg.sender === username;
+            const isMe = msg.username === username; // is the sender me of someone else?
 
             return (
             <div key={ index } 
               className='message user message-bubble' 
               style={{ background: isMe ? '#dcf8c6' : '#ffffff', color:'black', alignSelf: isMe ? 'flex-end' : 'flex-start', borderRadius: '10px', textAlign: "left" }}>
-              <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>{ isMe ? "You" : msg.sender }</div>
+              <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>{ isMe ? "You" : msg.username }</div>
               {msg.message}
             </div>
           );
