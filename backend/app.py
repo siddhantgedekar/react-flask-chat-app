@@ -159,6 +159,9 @@ def handle_message(data):
     # broadcast = true, means: send to all clients
     emit('receive_message_from_server', data, broadcast=True)
 
+with app.app_context(): # check if table exists, create if not.
+    db.create_all()
+
 if __name__ == '__main__':
     load_dotenv()  # load environment variables from .env file
     socketio.run(app, debug=True, port=5000)

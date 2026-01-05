@@ -4,12 +4,11 @@ import io from 'socket.io-client'
 import './App.css'
 
 // connect to server OUTSIDE of the component so it doesn't reconnect, everytime you type
-// const socket = io('https://sids-worldchat.onrender.com') // adjust URL as needed
-const socket = io('http://localhost:5000') // for local testing
+const BACKEND_URL = import.meta.env.PROD ? 'https://sids-worldchat.onrender.com' : ''; // for PROD vs DEV environment
+const socket = io(BACKEND_URL) // adjust URL as needed
 
 function App() {
   const [userCount, setUserCount] = useState(0);
-  // const [username, setUsername] = useState("User_" + Math.floor(Math.random() * 1000));
   const [username, setUsername] = useState("");
   
   const [input, setInput] = useState("");
@@ -56,7 +55,7 @@ function App() {
     setIsLoading(true); // loading...
 
     try { // handle error and fetch to backend
-      const response = await fetch("https://sids-worldchat.onrender.com/chat", {
+      const response = await fetch(`${BACKEND_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userInput }),
@@ -88,7 +87,7 @@ function App() {
     if(!username.trim()) return alert("Enter a name!"); // validation alert prompt for user
 
     try { // call backend login endpoint
-      const response = await fetch("/login", { // vite.config automatically redirects/forwards it to endpoint/API
+      const response = await fetch(`${BACKEND_URL}/login`, { // vite.config automatically redirects/forwards it to endpoint/API
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username }),
