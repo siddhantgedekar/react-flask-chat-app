@@ -162,6 +162,14 @@ def handle_message(data):
 with app.app_context(): # check if table exists, create if not.
     db.create_all()
 
+# if __name__ == '__main__':
+#     socketio.run(app, debug=True, port=5000)
+
 if __name__ == '__main__':
+    # Get the port from Render, or use 5000 for local dev
+    port = int(os.environ.get("PORT", 5000))
     load_dotenv()  # load environment variables from .env file
-    socketio.run(app, debug=True, port=5000)
+    
+    # host='0.0.0.0' is REQUIRED to make the server accessible externally
+    # debug=False is better for production
+    socketio.run(app, host='0.0.0.0', port=port)
