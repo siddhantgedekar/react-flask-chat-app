@@ -1,52 +1,70 @@
 import { useState, useEffect, useRef } from 'react'
+import { toast } from 'react-toastify'
 import ReactMarkdown from 'react-markdown'
 import io from 'socket.io-client'
 import './App.css'
 
 // connect to server OUTSIDE of the component so it doesn't reconnect, everytime you type
 const BACKEND_URL = import.meta.env.PROD ? 'https://sids-worldchat.onrender.com' : ''; // for PROD vs DEV environment
-const socket = io(BACKEND_URL) // adjust URL as needed
+const socket = io(BACKEND_URL || 'http://localhost:5000') // adjust URL as needed
 
 function App() {
-  const [userCount, setUserCount] = useState(0);
   const [username, setUsername] = useState("");
-  
-  const [input, setInput] = useState("");
-  const [worldInput, setWorldInput] = useState(""); // separate input for world
+  const [userCount, setUserCount] = useState(0);
+  const [receiverName, setReceiverName] = useState(""); // for private messaging
 
-  const [messages, setMessages] = useState([]); // AI chat messages
-  const [worldMessages, setWorldMessages] = useState([]); // World chat messages
+  // Input states for different chat types
+  const [input, setInput] = useState(""); // AI chat input
+  const [worldInput, setWorldInput] = useState(""); // world chat input
+  const [privateMessage, setPrivateMessage] = useState(""); // private chat input
+  // Message histories for different chat types
+  const [messages, setMessages] = useState([]); // AI chat message history
+  const [worldMessages, setWorldMessages] = useState([]); // World chat message history
+  const [privateMessageState, setPrivateMessageState] = useState([]); // private message history
 
+  // Loading and tab states
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ai');
 
+  // Login state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   // Refs are ONLY for scrolling now, not for hiding/showing
   const aiChatEndRef = useRef(null);
   const worldChatEndRef = useRef(null);
+  const privateChatRef = useRef(null);
 
-  useEffect(() => { // socket listener (the ear)
+  // socket listener (the ear)
+  useEffect(() => {
     socket.on('receive_message_from_server', (data) => {
       setWorldMessages((prev) => [...prev, data]);
+    });
+    socket.on('receive_private_message', (data) => {
+      setPrivateMessageState((prev) => [...prev, data]);
     });
     socket.on('update_user_count', (data) => {
       setUserCount(data.count)
     });
     socket.on('load_history', (history) => {
       setWorldMessages(history);
-    })
+    });
+    socket.on('connect', () => {
+      if(username) {
+        socket.emit('join', { 'username': username }); // join room with username
+      }
+    });
 
     return () => { // cleanup on unmount
       socket.off('receive_message_from_server');
+      socket.off('receive_private_message');
       socket.off('update_user_count');
       socket.off('load_history');
+      socket.off('connect');
     };
-  }, []);
+  }, [username]);
 
   const sendMessage = async () => { // function to send message to AI server
     const userInput = input; // store current input
-    
     setInput(""); // clear input box
 
     if (!userInput.trim()) return;
@@ -62,6 +80,7 @@ function App() {
       });
       const data = await response.json(); // wait for response
       setMessages(prev => [...prev, { sender: "bot", text: data.reply }]); // add bot's response to messages state
+
     } catch (error) {
       console.error("Error:", error);
       setMessages(prev => [...prev, { sender: "bot", text: "⚠️ Error: Could not connect to server." }]);
@@ -69,7 +88,8 @@ function App() {
     setIsLoading(false);
   };
 
-  const sendWorldMessage = () => { // function to send message to world/handle_message socket event
+  // Function message the world
+  const sendWorldMessage = () => {
     if (!worldInput.trim()) return; // don't send empty messages
 
     socket.emit('send_message_to_server', { message: worldInput, username: username }); // send message to python/server via socket
@@ -77,11 +97,22 @@ function App() {
     setWorldInput(""); // clear the input box of world chat
   }
 
+  // Function to send private message
+  const sendPrivateMessage = () => {
+    if(!privateMessage.trim()) return; // don't send empty message
+
+    socket.emit('send_private_message', { 'username': username, 'message': privateMessage, 'receiver': receiverName });
+
+    setPrivateMessage(""); // clear input box
+  }
+
   useEffect(() => { // Auto-Scroll to bottom whenever messages change
     if (activeTab === 'ai' && aiChatEndRef.current) aiChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (activeTab === 'private' && privateChatRef.current) privateChatRef.current.scrollIntoView({ behavior: "smooth" });
     if (activeTab === 'world' && worldChatEndRef.current) worldChatEndRef.current.scrollIntoView({ behavior: "smooth" });
-  }, [messages, worldMessages, activeTab]);
+  }, [messages, worldMessages, privateMessageState, activeTab]);
 
+  // Function to handle login
   async function handleLogin(e) {
     e.preventDefault(); // prevent page refresh
     if(!username.trim()) return alert("Enter a name!"); // validation alert prompt for user
@@ -97,6 +128,7 @@ function App() {
       if(response.ok) { // success!. Save username to state
         setUsername(data.username); // set username
         setIsLoggedIn(true); // mark logged in 'true'
+        toast.success(data.message +" "+ data.username); // show success message
       } else {
         alert(data.error); // show error message
       }
@@ -160,6 +192,7 @@ function App() {
       {/* TABS BUTTONS */}
       <section className="tabs-container">
         <button className={`world-chat ${activeTab === 'world' ? 'active' : ''}`} onClick={() => setActiveTab('world')}>World</button>
+        <button className={`private-chat ${activeTab === 'private' ? 'active' : ''}`} onClick={() => setActiveTab('private')}>Private</button>
         <button className={`ai-chat ${activeTab === 'ai' ? 'active' : ''}`} onClick={() => setActiveTab('ai')}>AI</button>
       </section>
 
@@ -200,8 +233,8 @@ function App() {
             <div key={ index } 
               className='message user message-bubble' 
               style={{ background: isMe ? '#dcf8c6' : '#ffffff', color:'black', alignSelf: isMe ? 'flex-end' : 'flex-start', borderRadius: '10px', textAlign: "left" }}>
-              <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>{ isMe ? "You" : msg.username }</div>
-              {msg.message}
+                <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>{ isMe ? "You" : msg.username } {msg.clock}</div>
+                <ReactMarkdown>{msg.message}</ReactMarkdown>
             </div>
           );
           })}
@@ -216,6 +249,43 @@ function App() {
             className='user-input'
           />
           <button onClick={sendWorldMessage}>Broadcast</button>
+        </div>
+      </section>
+
+      {/* Private Message Section */}
+      <section style={{ display: activeTab === 'private' ? 'block' : 'none' }}>
+        <div className="chat-history private">
+          {privateMessageState.map((msg, index) => {
+            const isMe = msg.username === username; // is the sender me of someone else?
+
+            return (
+            <div key={ index } 
+              className='message user message-bubble' 
+              style={{ background: isMe ? '#dcf8c6' : '#ffffff', color:'black', alignSelf: isMe ? 'flex-end' : 'flex-start', borderRadius: '10px', textAlign: "left" }}>
+                <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '4px', fontWeight: 'bold' }}>{ isMe ? "You" : msg.username } { msg.clock }</div>
+                <ReactMarkdown>{ msg.message }</ReactMarkdown>
+            </div>
+          );
+          })}
+          <div ref={privateChatRef} />
+        </div>
+
+        <div className="input-area">
+          <label htmlFor="pvt_msg">
+            <input value={receiverName} 
+            type="text" 
+            placeholder='To...' 
+            onChange={(e) => setReceiverName(e.target.value)}
+            className='user-input'/>
+          </label>
+          <input value={privateMessage} 
+            onChange={(e) => setPrivateMessage(e.target.value)}
+            onKeyPress={ (e) => e.key === 'Enter' && sendPrivateMessage()}
+            placeholder="Message privately..."
+            className='user-input' 
+            id="pvt_msg"
+          />
+          <button onClick={sendPrivateMessage}>Message</button>
         </div>
       </section>
 

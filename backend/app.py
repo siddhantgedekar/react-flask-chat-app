@@ -1,12 +1,13 @@
 # import necessary modules
 from sqlalchemy.exc import IntegrityError # Import this to handle "Duplicate" errors
+from flask_socketio import SocketIO, emit, join_room
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+import google.generativeai as genai
 from flask_session import Session
 from dotenv import load_dotenv
-import google.generativeai as genai
+from datetime import datetime
+from flask_cors import CORS
 import os
 
 # Switching from local AI to Google's cloud AI
@@ -18,13 +19,14 @@ api_key = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel('gemini-2.5-flash') # A fast, efficient model
 
-chat_session = model.start_chat(history=[]) # Implementing memory for context retention
+chat_session = model.start_chat(history=[]) # Implement context retention for AI (memory)
 
+# configure database URL for production use
 database_url = os.environ.get('DATABASE_URL') # get url from env variable
 if database_url and database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-# Create Flask and Configure app
+# Create Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'mysecretkey'
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///chat.db' # using sqlite database
@@ -45,6 +47,7 @@ model_name = 'qwen2:0.5b'  # specify the model name (local model example)
 
 # implementing memory of AI using Global variable for memory
 user_sessions = {}
+
 # count Global Users
 connected_users = 0
 
@@ -58,6 +61,7 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True) # unique id
     username = db.Column(db.String(50), nullable=False) # can't be empty
     text = db.Column(db.String(500), nullable=False) # can't be empty
+    clock = db.Column(db.String(20), nullable=False) # storing time, not empty
 
 # define a simple route
 @app.route('/')
@@ -85,6 +89,8 @@ def login():
             new_user = User(username=username)
             db.session.add(new_user)
             db.session.commit()
+            # on new user login store their current sid
+            user_sids[username] = request.sid
             return jsonify({"message": "User created successfully!", "username": username})
         except IntegrityError:
             # in case two person try at same time
@@ -124,7 +130,7 @@ def handle_connect():
     # convert them to a list of dicts
     history = []
     for msg in old_msg:
-        history.append({ 'username': msg.username, 'message': msg.text })
+        history.append({ 'username': msg.username, 'message': msg.text, 'clock': msg.clock })
     
     emit('update_user_count', { 'count': connected_users }, broadcast=True )
     emit('load_history', history)
@@ -142,12 +148,14 @@ def handle_message(data):
     message = data['message']
     # get the username sent from client
     username = data.get('username', 'Anonymous')
-    print(f'{username} says: {message}')
+    # get current time
+    clock=datetime.now().strftime('%I:%M %p')
+    print(f'{username} says: {message} time: {clock}')
 
     try:
         # save to Database
         # create a row in the sheet
-        new_msg = Message(username=username, text=message)
+        new_msg = Message(username=username, text=message, clock=clock)
         # add it to stagging area
         db.session.add(new_msg)
         # commit/save changes to the file
@@ -157,7 +165,41 @@ def handle_message(data):
         print('Error saving message to database:', e)
 
     # broadcast = true, means: send to all clients
-    emit('receive_message_from_server', data, broadcast=True)
+    response_data = {
+        'username': username,
+        'message': message,
+        'clock': clock
+        }
+    emit('receive_message_from_server', response_data, broadcast=True)
+
+# connect users to private chat room
+@socketio.on('join')
+def on_join(data):
+    username = data['username']
+    # make the room name as username
+    join_room(username)
+    print(f'{username} has joined their private room.')
+
+# private chat endpoint
+@socketio.on('send_private_message')
+def handle_private_message(data):
+    message = data['message']
+    username = data['username']
+    receiver = data['receiver']
+    clock=datetime.now().strftime('%I:%M %p')
+
+    # send message to recipient's username
+    emit('receive_private_message', {
+        'username': username,
+        'message': message,
+        'clock': clock
+    }, room=receiver)
+    # also send a copy to sendsr's room for better UX and less confusion
+    emit('receive_private_message', {
+        'username': username,
+        'message': message,
+        'clock': clock
+    }, room=username)
 
 with app.app_context(): # check if table exists, create if not.
     db.create_all()
