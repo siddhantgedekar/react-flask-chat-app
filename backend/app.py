@@ -1,6 +1,6 @@
 # import necessary modules
 from sqlalchemy.exc import IntegrityError # Import this to handle "Duplicate" errors
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, send
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 import google.generativeai as genai
@@ -8,6 +8,9 @@ from flask_session import Session
 from dotenv import load_dotenv
 from datetime import datetime
 from flask_cors import CORS
+from io import BytesIO
+import qrcode
+import base64
 import os
 
 # Switching from local AI to Google's cloud AI
@@ -34,8 +37,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SESSION_TYPE'] = 'filesystem'
 
 # configure security key
-CORS(app, resources={r"/*": {"origins": "*"}}) # enable CORS for all origins
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading') # initialize socketio
+# CORS(app, resources={r"/*": {"origins": "*"}}) # enable CORS for all origins
+CORS(app)
+# I removed the async_mode='threading' parameter from below line
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet') # initialize socketio
 # configure database with sqlalchemy
 db = SQLAlchemy(app) # initialize database
 
@@ -49,7 +54,7 @@ model_name = 'qwen2:0.5b'  # specify the model name (local model example)
 user_sessions = {}
 
 # count Global Users
-connected_users = 0
+connected_users = set()
 
 # create the users table
 class User(db.Model):
@@ -89,13 +94,11 @@ def login():
             new_user = User(username=username)
             db.session.add(new_user)
             db.session.commit()
-            # on new user login store their current sid
-            user_sids[username] = request.sid
-            return jsonify({"message": "User created successfully!", "username": username})
+            return jsonify({ "message": "User created successfully!", "username": username })
         except IntegrityError:
             # in case two person try at same time
             db.session.rollback()
-            return jsonify({"error": "Username already taken!"}), 409
+            return jsonify({ "error": "Username already taken!" }), 409
 
 # chat endpoint
 @app.route('/chat', methods=['POST'])
@@ -118,12 +121,51 @@ def chat():
     
     return jsonify({'reply': bot_reply})
 
+# Make sure you have a folder named 'static' in your root directory!
+UPLOAD_FOLDER = 'static/uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# generate qr code or a file
+@app.route('/qrcode_file', methods=['POST'])
+def generateQR():
+    if 'file' not in request.files:
+        return jsonify({ 'error': 'No file part' }), 400
+    
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({ 'error': 'No selected file '}), 400
+    
+    if file:
+        print(f'Received file: {file.filename}')
+        
+        # first save the uploaded file to get a URL
+        filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
+
+        # generate url
+        file_url = f"{request.host_url}{UPLOAD_FOLDER}/{file.filename}"
+
+        # create/generate qrcode
+        qr = qrcode.make(file_url)
+
+        # save it
+        buffer = BytesIO()
+        qr.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        # convert it into base64 string
+        img_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return jsonify({ 'message': 'File received successfully!', 'qrcode': f"data:image/png;base64,{img_str}" })
+
 # global chat endpoint
 @socketio.on('connect')
 def handle_connect():
     global connected_users
-    connected_users += 1
-    print('a user connected to global chat', connected_users)
+    connected_users.add(request.sid)
+    print('a user connected to global chat', len(connected_users))
 
     # load old messages (take 50 for now)
     old_msg = Message.query.all()
@@ -132,18 +174,20 @@ def handle_connect():
     for msg in old_msg:
         history.append({ 'username': msg.username, 'message': msg.text, 'clock': msg.clock })
     
-    emit('update_user_count', { 'count': connected_users }, broadcast=True )
+    emit('user_count_update', { 'count': len(connected_users) }, broadcast=True )
     emit('load_history', history)
 
 @socketio.on('disconnect')
 def handle_disconnect():
     global connected_users
-    connected_users -= 1
-    print('a user disconnected from global chat', connected_users)
-    emit('update_user_count', { 'count': connected_users }, broadcast=True )
+    if request.sid in connected_users:
+        connected_users.remove(request.sid)
+    
+    print('a user disconnected from global chat', len(connected_users))
+    emit('user_count_update', { 'count': len(connected_users) }, broadcast=True )
 
 # listen to messages from clients/react
-@socketio.on('send_message_to_server')
+@socketio.on('send_global_message')
 def handle_message(data):
     message = data['message']
     # get the username sent from client
@@ -170,7 +214,7 @@ def handle_message(data):
         'message': message,
         'clock': clock
         }
-    emit('receive_message_from_server', response_data, broadcast=True)
+    emit('receive_global_message', response_data, broadcast=True)
 
 # connect users to private chat room
 @socketio.on('join')
@@ -208,6 +252,5 @@ with app.app_context(): # check if table exists, create if not.
 #     socketio.run(app, debug=True, port=5000)
 
 if __name__ == '__main__':
-    load_dotenv()  # load environment variables from .env file
     port = int(os.environ.get("PORT", 5000))
-    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=port)

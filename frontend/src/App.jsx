@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { toast } from 'react-toastify'
 import ReactMarkdown from 'react-markdown'
-import io from 'socket.io-client'
+import { toast } from 'react-toastify'
+import { socket, BACKEND_URL } from './socket'
 import './App.css'
 
 // connect to server OUTSIDE of the component so it doesn't reconnect, everytime you type
-const BACKEND_URL = import.meta.env.PROD ? 'https://sids-worldchat.onrender.com' : ''; // for PROD vs DEV environment
-const socket = io(BACKEND_URL || 'http://localhost:5000') // adjust URL as needed
 
 function App() {
+  // filename state
+  const [filename, setFilename] = useState(null);
+  const [activeForm, setActiveForm] = useState("");
+  const [qrcode, setQrCode] = useState(null);
+
   const [username, setUsername] = useState("");
   const [userCount, setUserCount] = useState(0);
   const [receiverName, setReceiverName] = useState(""); // for private messaging
@@ -36,30 +39,45 @@ function App() {
 
   // socket listener (the ear)
   useEffect(() => {
-    socket.on('receive_message_from_server', (data) => {
+    socket.connect();
+
+    const onConnect = () => {
+      // 4. CRITICAL: Tell Server to put us in our Private Room
+      socket.emit('join', { username: username });
+    };
+
+    const onGlobalMessage = (data) => {
       setWorldMessages((prev) => [...prev, data]);
-    });
-    socket.on('receive_private_message', (data) => {
+    };
+
+    const onPrivateMessage = (data) => {
       setPrivateMessageState((prev) => [...prev, data]);
-    });
-    socket.on('update_user_count', (data) => {
-      setUserCount(data.count)
-    });
-    socket.on('load_history', (history) => {
+    };
+
+    const onUserCount = (data) => {
+      setUserCount(data.count);
+    };
+
+    const onLoadHistory = (history) => {
       setWorldMessages(history);
-    });
-    socket.on('connect', () => {
-      if(username) {
-        socket.emit('join', { 'username': username }); // join room with username
-      }
-    });
+    };
+
+    // Listeners
+    socket.on('connect', onConnect);
+    socket.on('receive_global_message', onGlobalMessage);
+    socket.on('receive_private_message', onPrivateMessage);
+    socket.on('user_count_update', onUserCount);
+    socket.on('load_history', onLoadHistory);
 
     return () => { // cleanup on unmount
-      socket.off('receive_message_from_server');
-      socket.off('receive_private_message');
-      socket.off('update_user_count');
-      socket.off('load_history');
-      socket.off('connect');
+      socket.off('connect', onConnect);
+      socket.off('receive_global_message', onGlobalMessage);
+      socket.off('receive_private_message', onPrivateMessage);
+      socket.off('user_count_update', onUserCount);
+      socket.off('load_history', onLoadHistory);
+      
+      // Kill connection when user logs out or refreshes
+      socket.disconnect();
     };
   }, [username]);
 
@@ -92,7 +110,7 @@ function App() {
   const sendWorldMessage = () => {
     if (!worldInput.trim()) return; // don't send empty messages
 
-    socket.emit('send_message_to_server', { message: worldInput, username: username }); // send message to python/server via socket
+    socket.emit('send_global_message', { message: worldInput, username: username }); // send message to python/server via socket
 
     setWorldInput(""); // clear the input box of world chat
   }
@@ -104,6 +122,41 @@ function App() {
     socket.emit('send_private_message', { 'username': username, 'message': privateMessage, 'receiver': receiverName });
 
     setPrivateMessage(""); // clear input box
+  }
+
+  // Function to generate QR codes
+  const formVisibility = () => {
+    // logic to create qr codes
+    // on call, set activeForm === 'form'
+    setActiveForm("form");
+  }
+
+  const callQR = async (e) => {
+    e.preventDefault(); // prevent refresh
+    if(!filename) return; // no sending empty value/data
+
+    // files are handled using browsers' FormData
+    const formData = new FormData();
+    formData.append('file', filename);
+
+    try {
+      const response = await fetch('/qrcode_file', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await response.json();
+      console.log("Server says: ", data);
+      
+      if(response.ok){
+        // setActiveForm('none');
+        setQrCode(data.qrcode);
+        toast.success("Generating QR Code.. please wait!!");
+      }
+    } catch (e) {
+      setActiveForm('none');
+      toast.error("OOPS!! failed to generate QR Code..")
+      console.error("Upload failed ", e);
+    }
   }
 
   useEffect(() => { // Auto-Scroll to bottom whenever messages change
@@ -185,9 +238,95 @@ function App() {
       <header>
         <nav>
           <h1>RexOrion</h1>
+          <div className="navbar-tools">
+            <button className='tools-container'>Tools</button>
+            <ul className="tools">
+              <li onClick={formVisibility}>Generate QR Code</li>
+            </ul>
+          </div>
           <small>Online {userCount}</small> {/*show user count*/}
         </nav>
       </header>
+
+      {/* FILE INPUT FORM */}
+      {/* <div className="fileform" style={{ border: activeForm === 'form' ? '1px solid grey' : 'none'}}>
+        <form style={{ display: activeForm === 'form' ? 'block' : 'none', margin: '5px', padding: '5px' }} onSubmit={callQR} method='POST'>
+          <h2 style={{ padding: '5px', color: 'white'}}>Upload file</h2>
+          <small style={{color: 'white'}}>upload .jpg, .png</small>
+          <br />
+          <input type="file" onChange={(e) => setFilename(e.target.files[0])} style={{padding: '5px', margin: '10px 0px'}}/>
+          <br />
+          <div style={{display: 'flex', justifyContent: 'space-between'}}>
+            <button type='submit' className='success'>Generate QR</button>
+            <button type='button' className='danger' onClick={() => setActiveForm('none')}>Cancel</button>
+          </div>
+        </form>
+      </div> */}
+
+      {/* UNIFIED FILE UPLOAD & QR RESULT MODAL */}
+      <div className="fileform" style={{ 
+          border: activeForm === 'form' ? '1px solid grey' : 'none',
+          display: activeForm === 'form' ? 'block' : 'none', // Hides entire box if not active
+          margin: '5px', 
+          padding: '15px',
+          borderRadius: '10px',
+          backgroundColor: '#333' // Added background so it pops out
+      }}>
+        
+        {/* LOGIC: IF NO QR CODE, SHOW FORM. IF QR CODE EXISTS, SHOW IMAGE */}
+        {!qrcode ? (
+          // --- VIEW 1: UPLOAD FORM ---
+          <form onSubmit={callQR}>
+            <h2 style={{ padding: '5px', color: 'white', marginTop: 0}}>Upload File</h2>
+            <small style={{color: '#ccc'}}>Supported: .jpg, .png</small>
+            <br />
+            
+            <input 
+              type="file" 
+              accept="image/*" // Good practice: limits selection to images
+              onChange={(e) => setFilename(e.target.files[0])} 
+              style={{padding: '5px', margin: '15px 0px', color: 'white'}}
+            />
+            
+            <br />
+            <div style={{display: 'flex', gap: '10px'}}>
+              <button type='submit' className='success' style={{flex: 1}}>Generate QR</button>
+              <button type='button' className='danger' onClick={() => setActiveForm('none')}>Cancel</button>
+            </div>
+          </form>
+        ) : (
+          // --- VIEW 2: QR RESULT ---
+          <div style={{ textAlign: 'center', color: 'white' }}>
+            <h2 style={{color: '#4caf50'}}>Success!</h2>
+            <p>Scan this to view your file:</p>
+            
+            <img 
+              src={qrcode} 
+              alt="Generated QR" 
+              style={{ 
+                width: '200px', 
+                height: '200px', 
+                borderRadius: '10px', 
+                border: '5px solid white',
+                margin: '10px 0' 
+              }} 
+            />
+            
+            <br />
+            <button 
+              className='danger' 
+              style={{ width: '100%', marginTop: '10px' }}
+              onClick={() => {
+                setQrCode(null);      // Clear the image
+                setFilename(null); // Clear the file
+                setActiveForm('none'); // Close the box
+              }}
+            >
+              Close
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* TABS BUTTONS */}
       <section className="tabs-container">
@@ -288,7 +427,6 @@ function App() {
           <button onClick={sendPrivateMessage}>Message</button>
         </div>
       </section>
-
     </div>
   )
 }
