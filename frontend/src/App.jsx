@@ -12,6 +12,10 @@ function App() {
   const [activeForm, setActiveForm] = useState("");
   const [qrcode, setQrCode] = useState(null);
 
+  // state for joke
+  const [joke, setJoke] = useState("");
+  const [isJokeLoading, setIsJokeLoading] = useState(true);
+
   const [username, setUsername] = useState("");
   const [userCount, setUserCount] = useState(0);
   const [receiverName, setReceiverName] = useState(""); // for private messaging
@@ -159,6 +163,28 @@ function App() {
     }
   }
 
+  const getTheJoke = async () => {
+    try {
+      setJoke("");
+      setIsJokeLoading(true);
+      // This API returns: { type: "general", setup: "Why did...", punchline: "Because..." }
+      const response = await fetch("https://icanhazdadjoke.com/", {
+        headers: { "Accept" : "application/json" },
+      });
+
+      const data = await response.json();
+
+      if(response.ok) {
+        setJoke(data.joke);
+        setIsJokeLoading(false);
+        console.log("Joke is: ",data.joke);
+      }
+    } catch (e) {
+      console.log("Error: ", e.error);
+      alert("OOPS!! Error fetching a joke..")
+    }
+  }
+
   useEffect(() => { // Auto-Scroll to bottom whenever messages change
     if (activeTab === 'ai' && aiChatEndRef.current) aiChatEndRef.current.scrollIntoView({ behavior: "smooth" });
     if (activeTab === 'private' && privateChatRef.current) privateChatRef.current.scrollIntoView({ behavior: "smooth" });
@@ -238,6 +264,20 @@ function App() {
       <header>
         <nav>
           <h1>RexOrion</h1>
+
+          <small className='joke'>
+            wanna hear a joke!!
+            <div className='joke-container'>
+              <br />
+              <button className='success joke-btn' onClick={getTheJoke}>click</button>
+
+              <h4 className='joke-show'>
+                {joke}
+                {isJokeLoading && <div className="message bot"><small className="dot"></small><small className="dot"></small><small className="dot"></small></div>}
+              </h4>
+            </div>
+          </small>
+
           <div className="navbar-tools">
             <button className='tools-container'>Tools</button>
             <ul className="tools">
@@ -247,21 +287,6 @@ function App() {
           <small>Online {userCount}</small> {/*show user count*/}
         </nav>
       </header>
-
-      {/* FILE INPUT FORM */}
-      {/* <div className="fileform" style={{ border: activeForm === 'form' ? '1px solid grey' : 'none'}}>
-        <form style={{ display: activeForm === 'form' ? 'block' : 'none', margin: '5px', padding: '5px' }} onSubmit={callQR} method='POST'>
-          <h2 style={{ padding: '5px', color: 'white'}}>Upload file</h2>
-          <small style={{color: 'white'}}>upload .jpg, .png</small>
-          <br />
-          <input type="file" onChange={(e) => setFilename(e.target.files[0])} style={{padding: '5px', margin: '10px 0px'}}/>
-          <br />
-          <div style={{display: 'flex', justifyContent: 'space-between'}}>
-            <button type='submit' className='success'>Generate QR</button>
-            <button type='button' className='danger' onClick={() => setActiveForm('none')}>Cancel</button>
-          </div>
-        </form>
-      </div> */}
 
       {/* UNIFIED FILE UPLOAD & QR RESULT MODAL */}
       <div className="fileform" style={{ 

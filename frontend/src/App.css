@@ -140,3 +140,28 @@ button.danger {
   backdrop-filter: blur(5px);
   background-color: transparent;
 }
+
+.joke {
+  border: 1px solid grey;
+  border-radius: 5px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.joke-container {
+  display: none;
+}
+.joke-container .joke-show {
+  width: 250px;
+  padding: 10px;
+  font: "monospace";
+  max-width: inherit;
+  border-radius: 6px;
+  background-color: #222;
+  overflow-wrap: break-word;
+}
+
+.joke:hover .joke-container {
+  position: absolute;
+  display: block;
+}

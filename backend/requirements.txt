@@ -41,6 +41,7 @@ MarkupSafe==3.0.3
 msgspec==0.20.0
 ollama==0.6.1
 packaging==25.0
+pillow==12.1.0
 proto-plus==1.26.1
 protobuf==5.29.5
 psycopg2-binary==2.9.11
@@ -53,6 +54,7 @@ python-dotenv==1.2.1
 python-engineio==4.12.3
 python-socketio==5.15.0
 PyYAML==6.0.3
+qrcode==8.2
 requests==2.32.5
 rsa==4.9.1
 shellingham==1.5.4
