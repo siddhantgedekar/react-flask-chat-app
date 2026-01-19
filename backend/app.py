@@ -51,7 +51,7 @@ Session(app) # initialize session
 model_name = 'qwen2:0.5b'  # specify the model name (local model example)
 
 # implementing memory of AI using Global variable for memory
-user_sessions = {}
+# user_sessions = {}
 
 # count Global Users
 connected_users = set()
@@ -67,6 +67,14 @@ class Message(db.Model):
     username = db.Column(db.String(50), nullable=False) # can't be empty
     text = db.Column(db.String(500), nullable=False) # can't be empty
     clock = db.Column(db.String(20), nullable=False) # storing time, not empty
+
+# persistent data for AI
+class AIChatHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), nullable=False)
+    role = db.Column(db.String(10), nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
 # define a simple route
 @app.route('/')
@@ -105,21 +113,37 @@ def login():
 def chat():
     data = request.json
     user_message = data.get('message', '')
-    user_id = data.get('user_id')
+    username = data.get('username')
 
-    if user_id not in user_sessions:
-        # create if not
-        user_sessions[user_id] = model.start_chat(history=[])
+    if not username:
+        return jsonify({'reply': "Error: I don't know who you are. Please reload.."}), 400
     
-    # get user's chat sessions
-    current_session = user_sessions[user_id]
+    recent_chat = AIChatHistory.query.filter_by(username=username).order_by(AIChatHistory.id.asc()).limit(20).all()
 
-    # ask gemini a question
-    response = current_session.send_message(user_message)
-
-    bot_reply = response.text
+    gemini_history=[]
+    for chat in recent_chat:
+        gemini_history.append({
+            "role": chat.role,
+            "parts": [chat.text]
+            })
     
-    return jsonify({'reply': bot_reply})
+    chat_session = model.start_chat(history=gemini_history)
+
+    try:
+        response = chat_session.send_message(user_message)
+        bot_reply = response.text
+
+        user_entry = AIChatHistory(username=username, role='user', text=user_message)
+        ai_entry = AIChatHistory(username=username, role='model', text=bot_reply)
+
+        db.session.add(user_entry)
+        db.session.add(ai_entry)
+        db.session.commit()
+
+        return jsonify({'reply': bot_reply})
+    except Exception as e:
+        print(f"AI Error: {e}")
+        return jsonify({'reply': "My brain is fuzzy right now. Try again later."})
 
 # Make sure you have a folder named 'static' in your root directory!
 UPLOAD_FOLDER = 'static/uploads'

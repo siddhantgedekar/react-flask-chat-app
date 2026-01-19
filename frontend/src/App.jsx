@@ -26,6 +26,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('ai');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [pageTheme, setPageTheme] = useState("");
 
   // Refs
   const aiChatEndRef = useRef(null);
@@ -77,7 +78,7 @@ function App() {
       const response = await fetch(`${BACKEND_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userInput }),
+        body: JSON.stringify({ message: userInput, username: username }),
       });
       const data = await response.json();
       setMessages(prev => [...prev, { sender: "bot", text: data.reply }]);
@@ -135,6 +136,10 @@ function App() {
     } finally {
       setIsJokeLoading(false);
     }
+  }
+
+  const setTheme = () => {
+    
   }
 
   const handleLogin = async (e) => {

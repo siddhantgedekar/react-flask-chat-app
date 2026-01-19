@@ -1,6 +1,7 @@
 /* App.css */
 body {
-  background-color: #212529; /* Bootstrap dark bg */
+  /* background-color: #212529; Bootstrap dark bg */
+  background-color: lightgrey;
   color: white;
   min-height: 100vh;
 }
@@ -53,4 +54,32 @@ body {
   z-index: 1050; /* Above everything */
   backdrop-filter: blur(10px);
   background: rgba(33, 37, 41, 0.95);
+}
+
+/* glass effect for navbar */
+.glass-bg {
+  /* background: linear-gradient(to right, rgba(104, 255, 194, 0.625), rgb(255, 110, 134)); */
+  background: radial-gradient(
+    circle, 
+    rgba(225, 53, 130, 0.4) 0%,   /* Bright center (Green) */
+    rgba(33, 37, 41, 0) 70%        /* Fade to transparent/dark */
+  );
+  backdrop-filter: blur(10px);
+  
+  /* Make it 3x wider than the screen so we can slide it */
+  background-size: 300% 300%;
+  /* box-shadow: 0px 5px 20px rgba(225, 53, 130, 0.4); */
+  animation: gradientSlide 8s ease infinite;
+}
+
+@keyframes gradientSlide {
+  0% {
+    background-position: 0% 50%; /* Start Left */
+  }
+  50% {
+    background-position: 100% 50%; /* Slide to Right */
+  }
+  100% {
+    background-position: 0% 50%; /* Slide back to Left */
+  }
 }
