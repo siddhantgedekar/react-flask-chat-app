@@ -214,18 +214,18 @@ def handle_disconnect():
     emit('user_count_update', { 'count': len(connected_users) }, broadcast=True )
 
 # self destruct button
-@app.route('/nuke-database-123')
-def nuke_db():
-    try:
-        # 1. Delete all existing tables (Fixes the missing column error)
-        db.drop_all()
+# @app.route('/nuke-database-123')
+# def nuke_db():
+#     try:
+#         # 1. Delete all existing tables (Fixes the missing column error)
+#         db.drop_all()
         
-        # 2. Create fresh tables (With the new 'clock' column)
-        db.create_all()
+#         # 2. Create fresh tables (With the new 'clock' column)
+#         db.create_all()
         
-        return "✅ Database Reset Successful! You can go back to chat now."
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
+#         return "✅ Database Reset Successful! You can go back to chat now."
+#     except Exception as e:
+#         return f"❌ Error: {str(e)}"
 
 # listen to messages from clients/react
 @socketio.on('send_global_message')
