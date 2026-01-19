@@ -9,9 +9,11 @@ from dotenv import load_dotenv
 from datetime import datetime
 from flask_cors import CORS
 from io import BytesIO
+import eventlet
 import qrcode
 import base64
 import os
+eventlet.monkey_patch()
 
 # Switching from local AI to Google's cloud AI
 # 1. load the secret key from .env file
