@@ -188,7 +188,8 @@ def generateQR():
 
 # global chat endpoint
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth):
+    print("used connected with auth: ",auth)
     global connected_users
     connected_users.add(request.sid)
     print('a user connected to global chat', len(connected_users))
